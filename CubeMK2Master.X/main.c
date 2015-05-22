@@ -20,12 +20,12 @@
 
 // main clock at 40MHz
 #define SYS_FREQ    ( 40000000L )
-// Total number of LEDs to count -> total LEDs / 4
-#define LED_TOTAL   8
-#define COUNT_MAX   ( LED_TOTAL / 4 )
-#define R_DESC  0x00
-#define G_DESC  0x01
-#define B_DESC  0x02
+#define MAX_LED     40
+#define MAX_ROW     4
+#define MAX_COL     7
+#define R_DESC      0x0
+#define G_DESC      0x1
+#define B_DESC      0x2
 
 typedef struct {
     uint16_t r;
@@ -36,7 +36,7 @@ typedef struct {
 uint32_t txBuff = 0;
 uint32_t rData;
 uint16_t colorBuff1[ 8 ][ 8 ][ 3 ];
-rgb_t rgbColorBuff[8][8];
+rgb_t rgbColorBuff[ 8 ][ 8 ];
 
 int row = 0;
 int seq = 0;
@@ -63,7 +63,7 @@ rgb_t R_GetColorByAngle( float angle ) {
     // 240 deg = 0, 0 255
     // 300 deg = 255, 0, 255
     // delta-phi = 60 degrees / delta-x = 255
-    
+
     // while loop to handle possible multiples of 360
     while ( angle >= 360 ) {
         angle = angle - 360;
@@ -124,13 +124,13 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
     rgb_t tmpColor;
     // update brightness level every 50 mS
     // 256 total values (0-255) thus 12.8 seconds for full refresh @ 50 mS rate
-    if ( ++count == 10 ) {   // 1 mS * 50 counts = 50mS
+    if ( ++count == 30 ) {   // 1 mS * 50 counts = 50mS
         // when full brightness is reached...
 
         if ( rgbAngle++ > 360 ) {
             rgbAngle = 0;
         }
-        
+
         for ( idxColor = 0; idxColor < 8; idxColor++ ) {
             tmpColor = R_GetColorByAngle( rgbAngle + ( (idxColor+1)*45 ) );
             colorBuff1[ 0 ][ idxColor ][ 0 ] = tmpColor.r;
@@ -144,7 +144,7 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
 }
 
 int main() {
-    int i, j;
+    int i, row, col;
     SYSTEMConfig( SYS_FREQ, SYS_CFG_WAIT_STATES | SYS_CFG_PCACHE );
     INTEnableSystemMultiVectoredInt();
     ANSELB = 0;     // set all analog pins to digital mode
@@ -155,7 +155,7 @@ int main() {
     // Startup with all outputs OFF
     LATBCLR = 0xFFFF;
 
-    PPSUnLock;                        
+    PPSUnLock;
     PPSOutput( 3, RPB13, SDO1 );
     PPSInput( 2, SDI1, RPB5 );
     PPSLock;
@@ -166,7 +166,7 @@ int main() {
     // channel 1, slave mode, 16 bit - need to verify BAUD rate
     // bitrate=srcClk/(2*(SPIBRG+1)) The input parametes srcClkDiv specifies the srcClk divisor term (2*(SPIBRG+1)), so the BRG is calculated as SPIBRG=srcClkDiv/2-1.
     // with div = 1024 -> 20000000-1
-    SpiChnOpen( 1, SPI_OPEN_MSTEN | SPI_OPEN_MODE32 | SPI_OPEN_SMP_END, 512 );  // with clkDiv = 512, 78.125kbps
+    SpiChnOpen( 1, SPI_OPEN_MSTEN | SPI_OPEN_MODE32 | SPI_OPEN_SMP_END, 714 );  // with clkDiv = 512, 78.125kbps
 
    // for overall refresh rate of 1 mS
    // We want to find required PR2 for given delay time...
@@ -176,7 +176,6 @@ int main() {
         // -> PR2 = ( .001 * 40000000 / 256 ) - 1
         // -> PR2 = 155
 
-
     OpenTimer2( T2_ON | T2_PS_1_256 | T2_SOURCE_INT, 155 );
     ConfigIntTimer2( T2_INT_ON | T2_INT_PRIOR_6 );
     mT2SetIntPriority( 6 );      // set timer2 int priority
@@ -185,7 +184,8 @@ int main() {
 
     srand( ReadCoreTimer() );
 
-    for ( i = 0; i < 10000; i++ ) {
+    // Slight delay before starting data xfer
+    for ( i = 0; i < 50000; i++ ) {
         Nop();
     }
 
@@ -194,26 +194,36 @@ int main() {
     // color_desc is the color descriptor for the current LED: 00 = R, 01 = G, 10 = B, 11 = not used
     // addr is the current linear address in the cube space. 14 bits = 16384 total unique addresses
     // LED value is the PWM brightnes value (0-65535) of the current LED
+
     while ( 1 ) {
-        for ( i = 0; i < 8; i++ ) {
+        row = col = 0;
+        // convert to row/col matrix from linear address
+        for ( i = 0; i < MAX_LED; i++ ) {
+            // increment row every time we overflow the max column
+            
+
             // build packet and transmit R data
-            txBuff = colorBuff1[ 0 ][ i ][ 0 ];     // R data (16 bits)
+            txBuff = colorBuff1[ row ][ col ][ 0 ];     // R data (16 bits)
             txBuff |= ( i << 16 );                  // address data (14 bits)
             txBuff |= ( R_DESC << 30 );             // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
 
             // build packet and transmit G data
-            txBuff = colorBuff1[ 0 ][ i ][ 1 ];     // G data (16 bits)
+            txBuff = colorBuff1[ row ][ col ][ 1 ];     // G data (16 bits)
             txBuff |= ( i << 16 );                  // address data (14 bits)
             txBuff |= ( G_DESC << 30 );             // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
 
             // build packet and transmit B data
-            txBuff = colorBuff1[ 0 ][ i ][ 2 ];     // B data (16 bits)
+            txBuff = colorBuff1[ row ][ col ][ 2 ];     // B data (16 bits)
             txBuff |= ( i << 16 );                  // address data (14 bits)
             txBuff |= ( B_DESC << 30 );             // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
 
+            if ( col++ > 6 ) {
+                row++;
+                col = 0;
+            }
         }
     }
 
