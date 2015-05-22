@@ -119,18 +119,40 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
     rgb_t tmpColor;
     // update brightness level every 50 mS
     // 256 total values (0-255) thus 12.8 seconds for full refresh @ 50 mS rate
-    if ( ++count == 30 ) {   // 1 mS * 50 counts = 50mS
+    if ( ++count == 20 ) {   // 1 mS * 50 counts = 50mS
         // when full brightness is reached...
 
-        if ( rgbAngle++ > 360 ) {
+        if ( (rgbAngle += 5 ) > 360 ) {
             rgbAngle = 0;
         }
 
         for ( idxColor = 0; idxColor < 8; idxColor++ ) {
-            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 1) * 45 ) );
+            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 1) * 25 ) );
             colorBuff1[ 0 ][ idxColor ][ 0 ] = tmpColor.r;
             colorBuff1[ 0 ][ idxColor ][ 1 ] = tmpColor.g;
             colorBuff1[ 0 ][ idxColor ][ 2 ] = tmpColor.b;
+            
+            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 2) * 25 ) );
+            colorBuff1[ 1 ][ idxColor ][ 0 ] = tmpColor.r;
+            colorBuff1[ 1 ][ idxColor ][ 1 ] = tmpColor.g;
+            colorBuff1[ 1 ][ idxColor ][ 2 ] = tmpColor.b;
+            
+            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 3) * 25 ) );
+            colorBuff1[ 2 ][ idxColor ][ 0 ] = tmpColor.r;
+            colorBuff1[ 2 ][ idxColor ][ 1 ] = tmpColor.g;
+            colorBuff1[ 2 ][ idxColor ][ 2 ] = tmpColor.b;
+            
+            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 4) * 25 ) );
+            colorBuff1[ 3 ][ idxColor ][ 0 ] = tmpColor.r;
+            colorBuff1[ 3 ][ idxColor ][ 1 ] = tmpColor.g;
+            colorBuff1[ 3 ][ idxColor ][ 2 ] = tmpColor.b;
+            
+            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 5) * 25 ) );
+            colorBuff1[ 4 ][ idxColor ][ 0 ] = tmpColor.r;
+            colorBuff1[ 4 ][ idxColor ][ 1 ] = tmpColor.g;
+            colorBuff1[ 4 ][ idxColor ][ 2 ] = tmpColor.b;
+
+
         }
         count = 0;
     }
