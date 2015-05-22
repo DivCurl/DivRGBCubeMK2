@@ -39,8 +39,7 @@
 
 
 volatile int rowRefresh = 0;
-uint32_t rData;
-int bufferFull = 0;
+volatile int bufferFull = 0;
 
 // [ COL NUM ][ LED_NUM ][ RGB_NUM ]
 volatile uint16_t colorBuff1[ 8 ][ 8 ][ 3 ];
@@ -143,8 +142,9 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
 }
 
 int main() {
-    int i, row, col;
+    int row, col;
     uint16_t ledDesc, addr, color;
+    uint32_t rxData;
 
     SYSTEMConfig( SYS_FREQ, SYS_CFG_WAIT_STATES | SYS_CFG_PCACHE );
     INTEnableSystemMultiVectoredInt();
@@ -195,24 +195,17 @@ int main() {
  */
 
     while ( 1 ) {
-        rData = SpiChnGetC( 1 );    // Receive data on the slave channel when SPIBUF is ready
-        SpiChnPutC( 1, rData );     // Relay back data to master on next clock
+        rxData = SpiChnGetC( 1 );    // Receive data on the slave channel when SPIBUF is ready
+        SpiChnPutC( 1, rxData );     // Relay back data to master on next clock
 
         // decode data from packet and populate array
         // 32-bit packet structure: [ 2 bits color_desc ] [ 14 bits addr ] [ 16 bits LED value ]
-        ledDesc = ( rData >> 30 ) & 0x03;
-        addr = ( rData >> 16 ) & 0x3FFF;    // need to mask out the 14 addr bits
-        color = rData & 0xFFFF;             // need to mask out the 16 color bits (LSB)
-
-        // convert to row/col matrix from linear address
-        row = col = 0;
-        for ( i = 0; i < addr; i++ ) {
-            // increment row every time we overflow the max column 
-            if ( col++ == MAX_COL ) {
-                row++;
-                col = 0;
-            }
-        }
+        ledDesc = ( rxData >> 30 ) & 0x03;
+        addr = ( rxData >> 16 ) & 0x3FFF;    // need to mask out the 14 addr bits
+        color = rxData & 0xFFFF;             // need to mask out the 16 color bits (LSB)
+        // convert to row/col matrix from linear address (range 0-39)
+        col = addr % 8;
+        row = addr / 8;
 
         // set the color of the referenced RGB
         if ( ledDesc == 0x00 ) {

@@ -33,24 +33,19 @@ typedef struct {
     uint16_t b;
 } rgb_t;
 
-uint32_t txBuff = 0;
-uint32_t rData;
-uint16_t colorBuff1[ 8 ][ 8 ][ 3 ];
-rgb_t rgbColorBuff[ 8 ][ 8 ];
-
-int row = 0;
-int seq = 0;
-int count = 0;
-int rgbAngle = 0;
-int idxColor = 0;
-int brightVal = 0;
+volatile uint16_t colorBuff1[ 8 ][ 8 ][ 3 ];
+volatile rgb_t rgbColorBuff[ 8 ][ 8 ];
+volatile int count = 0;
+volatile int rgbAngle = 0;
+volatile int idxColor = 0;
+volatile int brightVal = 0;
 
 // takes 8-bit RGB input value and maps to 16-bit value
 uint16_t R_Downsample( uint8_t input ) {
     // 16-bit = total of 65535 values, 8-bit total of 255 values
     // For even distribution, 65535 / 255 = 257
     // -> output = input * 257
-    return (uint16_t) ( input * 257 );
+    return ( uint16_t ) ( input * 257 );
 }
 
 // note: valid angle must be between 0 & 360 deg - no bounds checking
@@ -132,7 +127,7 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
         }
 
         for ( idxColor = 0; idxColor < 8; idxColor++ ) {
-            tmpColor = R_GetColorByAngle( rgbAngle + ( (idxColor+1)*45 ) );
+            tmpColor = R_GetColorByAngle( rgbAngle + ( ( idxColor + 1) * 45 ) );
             colorBuff1[ 0 ][ idxColor ][ 0 ] = tmpColor.r;
             colorBuff1[ 0 ][ idxColor ][ 1 ] = tmpColor.g;
             colorBuff1[ 0 ][ idxColor ][ 2 ] = tmpColor.b;
@@ -145,6 +140,7 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
 
 int main() {
     int i, row, col;
+    uint32_t txBuff, rxData;
     SYSTEMConfig( SYS_FREQ, SYS_CFG_WAIT_STATES | SYS_CFG_PCACHE );
     INTEnableSystemMultiVectoredInt();
     ANSELB = 0;     // set all analog pins to digital mode
@@ -196,10 +192,10 @@ int main() {
     // LED value is the PWM brightnes value (0-65535) of the current LED
 
     while ( 1 ) {
-        row = col = 0;
         // convert to row/col matrix from linear address
         for ( i = 0; i < MAX_LED; i++ ) {
-            // increment row every time we overflow the max column
+            col = i % 8;
+            row = i / 8;
 
             // build packet and transmit R data
             txBuff = colorBuff1[ row ][ col ][ 0 ];     // R data (16 bits)
@@ -218,11 +214,6 @@ int main() {
             txBuff |= ( i << 16 );                  // address data (14 bits)
             txBuff |= ( B_DESC << 30 );             // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
-
-            if ( col++ == MAX_COL ) {
-                row++;
-                col = 0;
-            }
            
         }
     }
