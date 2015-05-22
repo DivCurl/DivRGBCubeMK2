@@ -38,7 +38,7 @@
 #define MAX_COL     7           //   0 inclusive
 
 
-volatile int rowRefresh = 0;
+volatile int activeRow = 0;
 volatile int bufferFull = 0;
 
 // [ COL NUM ][ LED_NUM ][ RGB_NUM ]
@@ -92,7 +92,7 @@ inline void Refresh() {
         // Send color data packet - 24 bytes (12 words) - MSB SHIFTED FIRST
          for ( i = ( iMax - 1 ); i >= iMin; i-- ) {
             for ( j = 2; j >= 0; j-- ) {    // this line is OK
-                ShiftWord( colorBuff1[ rowRefresh ][ i ][ j ] );
+                ShiftWord( colorBuff1[ activeRow ][ i ][ j ] );
             }
         }
     }
@@ -113,7 +113,7 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
     Refresh();
 
     // Mux
-    switch ( rowRefresh ) {
+    switch ( activeRow ) {
         case 0:
             LATBCLR = ROW_Q0;
             break;
@@ -134,8 +134,8 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
             break;
     }
 
-   if ( ++rowRefresh > 4 ) {
-        rowRefresh = 0;
+   if ( ++activeRow > 4 ) {
+        activeRow = 0;
    }
     
     mT2ClearIntFlag();
