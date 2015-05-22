@@ -49,7 +49,6 @@ volatile uint16_t colorBuff1[ 8 ][ 8 ][ 3 ];
 // uint16_t (*rxBuff)[ 8 ][ 3 ] = colorBuff1;
 // uint16_t (*pBuff)[ 8 ][ 3 ] = colorBuff1;
 
-uint16_t ledDesc, addr, color;
 // write cmd, params, BC for R, G, & B
 uint8_t data_buff[ 4 ] = { 0x94, 0x50, 0x0F, 0xFF };
 int dummy;
@@ -144,7 +143,9 @@ void __ISR ( _TIMER_2_VECTOR, ipl6 ) TMR2IntHandler( void ) {
 }
 
 int main() {
-    int row, col;
+    int i, row, col;
+    uint16_t ledDesc, addr, color;
+
     SYSTEMConfig( SYS_FREQ, SYS_CFG_WAIT_STATES | SYS_CFG_PCACHE );
     INTEnableSystemMultiVectoredInt();
     ANSELB = 0;
@@ -202,17 +203,15 @@ int main() {
         ledDesc = ( rData >> 30 ) & 0x03;
         addr = ( rData >> 16 ) & 0x3FFF;    // need to mask out the 14 addr bits
         color = rData & 0xFFFF;             // need to mask out the 16 color bits (LSB)
-        
+
         // convert to row/col matrix from linear address
         row = col = 0;
-        int i;
-        for ( i = 0; i <= addr; i++ ) {
+        for ( i = 0; i < addr; i++ ) {
             // increment row every time we overflow the max column 
-            if ( col > MAX_COL ) {
+            if ( col++ == MAX_COL ) {
                 row++;
                 col = 0;
             }
-            col++;
         }
 
         // set the color of the referenced RGB

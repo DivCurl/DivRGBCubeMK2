@@ -200,7 +200,6 @@ int main() {
         // convert to row/col matrix from linear address
         for ( i = 0; i < MAX_LED; i++ ) {
             // increment row every time we overflow the max column
-            
 
             // build packet and transmit R data
             txBuff = colorBuff1[ row ][ col ][ 0 ];     // R data (16 bits)
@@ -220,10 +219,11 @@ int main() {
             txBuff |= ( B_DESC << 30 );             // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
 
-            if ( col++ > 6 ) {
+            if ( col++ == MAX_COL ) {
                 row++;
                 col = 0;
             }
+           
         }
     }
 
