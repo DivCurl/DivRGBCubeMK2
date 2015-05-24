@@ -40,7 +40,6 @@
 
 volatile int activeRow = 0;
 volatile int bufferFull = 0;
-
 // [ COL NUM ][ LED_NUM ][ RGB_NUM ]
 volatile uint16_t colorBuff1[ 8 ][ 8 ][ 3 ];
 /*** Might use the below buffers for double-buffering later ***/

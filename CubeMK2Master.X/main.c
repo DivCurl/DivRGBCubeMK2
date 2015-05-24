@@ -23,6 +23,7 @@
 #define MAX_LED     40
 #define MAX_ROW     4
 #define MAX_COL     7
+#define MAX_ANIM    3
 #define R_DESC      0x0
 #define G_DESC      0x1
 #define B_DESC      0x2
@@ -34,10 +35,11 @@ typedef struct {
 } rgb_t;
 
 enum {
-    AN_TEST,
+    AN_TEST = 1,
     AN_TEXT
 };
 
+// [ col ] [ row ] [ RGB ]
 volatile uint16_t colorBuff[ 8 ][ 8 ][ 3 ];
 volatile rgb_t rgbColorBuff[ 8 ][ 8 ];
 volatile int count = 0;
@@ -46,7 +48,7 @@ volatile int idxColor = 0;
 volatile int brightVal = 0;
 volatile int gDelay = 0;
 int delayDn = 0;
-int anim = 0;
+int gAnim = 0;
 
 const unsigned char ascii[455] = {
 	0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x5f,0x00,0x00,	//  !
@@ -99,15 +101,15 @@ const unsigned char ascii[455] = {
 
 // Assigns the input RGB color to the specified voxel
 void V_Set( int x, int y, rgb_t color ) {
-    colorBuff[ x ][ y ][ 0 ] = color.r;
-    colorBuff[ x ][ y ][ 1 ] = color.g;
-    colorBuff[ x ][ y ][ 2 ] = color.b;
+    colorBuff[ y ][ x ][ 0 ] = color.r;
+    colorBuff[ y ][ x ][ 1 ] = color.g;
+    colorBuff[ y ][ x ][ 2 ] = color.b;
 }
 
 void V_Clear( int x, int y ) {
-    colorBuff[ x ][ y ][ 0 ] = 0;
-    colorBuff[ x ][ y ][ 1 ] = 0;
-    colorBuff[ x ][ y ][ 2 ] = 0;
+    colorBuff[ y ][ x ][ 0 ] = 0;
+    colorBuff[ y ][ x ][ 1 ] = 0;
+    colorBuff[ y ][ x ][ 2 ] = 0;
 }
 
 void F_Getchar (char chr, unsigned char *dst) {
@@ -122,7 +124,7 @@ void F_Getchar (char chr, unsigned char *dst) {
     }
 }
 
-void F_SendText(const char *str, rgb_t color) {
+void F_ScrollText(const char *str, rgb_t color) {
     uint16_t x, y, i;
     static uint16_t shifts;
     unsigned char chr[5];   // stores the current character
@@ -232,6 +234,20 @@ rgb_t R_GetColorByAngle( float angle ) {
 
 }
 
+void D_Fill( rgb_t color ) {
+    int i;
+    for ( i = 0; i <= MAX_ROW; i++ ) {
+        V_Set( 0, i, color );
+        V_Set( 1, i, color );
+        V_Set( 2, i, color );
+        V_Set( 3, i, color );
+        V_Set( 4, i, color );
+        V_Set( 5, i, color );
+        V_Set( 6, i, color );
+        V_Set( 7, i, color );        
+    }
+}
+
 void A_Test() {
     rgb_t tmpColor;
     
@@ -268,6 +284,7 @@ void A_Test() {
     }
 }
 
+// blocking mS delay function
 void D_msDelay ( unsigned int delay ) {
     OpenTimer1( T1_ON | T1_PS_1_256, 0xFFFF );
     
@@ -278,6 +295,48 @@ void D_msDelay ( unsigned int delay ) {
     }
 
     CloseTimer1();
+}
+
+// blocking uS delay function
+void D_usDelay ( unsigned int delay ) {
+    OpenTimer1( T1_ON | T1_PS_1_256, 0xFFFF );
+
+    while ( delay-- ) {
+      // t x 1ms loop
+        WriteTimer1( 0 );
+        while ( ReadTimer1() < ( SYS_FREQ / 256 ) );
+    }
+
+    CloseTimer1();
+}
+
+void A_Animate( ) {
+    rgb_t tmpColor;
+    switch ( gAnim ) {
+        case 1:
+            tmpColor.r = 0xFFFF;
+            tmpColor.g = 0x0;
+            tmpColor.b = 0x0;
+            D_Fill( tmpColor );
+            D_msDelay( 1000 );
+            break;
+        case 2:
+            tmpColor.r = 0x0;
+            tmpColor.g = 0xFFFF;
+            tmpColor.b = 0x0;
+            D_Fill( tmpColor );
+            D_msDelay( 1000 );
+            break;
+        case 3:
+            tmpColor.r = 0x0;
+            tmpColor.g = 0x0;
+            tmpColor.b = 0xFFFF;
+            D_Fill( tmpColor );
+            D_msDelay ( 1000 );
+            break;
+        default:
+            break;
+    }
 }
 
 // Timer 2 interrupt handler - fires every 1ms
@@ -315,7 +374,7 @@ int main() {
     // channel 1, slave mode, 16 bit - need to verify BAUD rate
     // bitrate=srcClk/(2*(SPIBRG+1)) The input parametes srcClkDiv specifies the srcClk divisor term (2*(SPIBRG+1)), so the BRG is calculated as SPIBRG=srcClkDiv/2-1.
     // with div = 1024 -> 20000000-1
-    SpiChnOpen( 1, SPI_OPEN_MSTEN | SPI_OPEN_MODE32 | SPI_OPEN_SMP_END, 714 );  // with clkDiv = 512, 78.125kbps
+    SpiChnOpen( 1, SPI_OPEN_MSTEN | SPI_OPEN_MODE32 | SPI_OPEN_SMP_END, 714 );  // with clkDiv = 714, ~56Kbps
 
    // for overall refresh rate of 1 mS
    // We want to find required PR2 for given delay time...
@@ -325,8 +384,8 @@ int main() {
         // -> PR2 = ( .001 * 40000000 / 256 ) - 1
         // -> PR2 = 155
 
-    OpenTimer2( T2_ON | T2_PS_1_256 | T2_SOURCE_INT, 155 );
-    ConfigIntTimer2( T2_INT_ON | T2_INT_PRIOR_6 );
+    //OpenTimer2( T2_ON | T2_PS_1_256 | T2_SOURCE_INT, 155 );
+    // ConfigIntTimer2( T2_INT_ON | T2_INT_PRIOR_6 );
     mT2SetIntPriority( 6 );      // set timer2 int priority
     mT2ClearIntFlag();           // clear interrupt flag before startup
     mT2IntEnable( 1 );           // enable timer2 interrupts
@@ -342,32 +401,39 @@ int main() {
     // [ 2 bits color_desc ] [ 14 bits addr ] [ 16 bits LED value ]
     // color_desc is the color descriptor for the current LED: 00 = R, 01 = G, 10 = B, 11 = not used
     // addr is the current linear address in the cube space. 14 bits = 16384 total unique addresses
-    // LED value is the PWM brightnes value (0-65535) of the current LED
+    // LED value is the PWM brightnes value (0-65535) of the current LED   
+
 
     while ( 1 ) {
-        // convert to row/col matrix from linear address
+        A_Animate( gAnim );
+        // Send frame update to slave
         for ( i = 0; i < MAX_LED; i++ ) {
+            // convert to row/col matrix from linear address
             col = i % 8;
             row = i / 8;
 
             // build packet and transmit R data
-            txBuff = colorBuff[ row ][ col ][ 0 ];     // R data (16 bits)
-            txBuff |= ( i << 16 );                  // address data (14 bits)
-            txBuff |= ( R_DESC << 30 );             // LED descriptor (2 bits)
+            txBuff = colorBuff[ row ][ col ][ 0 ];      // R data (16 bits)
+            txBuff |= ( i << 16 );                      // address data (14 bits)
+            txBuff |= ( R_DESC << 30 );                 // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
 
             // build packet and transmit G data
-            txBuff = colorBuff[ row ][ col ][ 1 ];     // G data (16 bits)
-            txBuff |= ( i << 16 );                  // address data (14 bits)
-            txBuff |= ( G_DESC << 30 );             // LED descriptor (2 bits)
+            txBuff = colorBuff[ row ][ col ][ 1 ];      // G data (16 bits)
+            txBuff |= ( i << 16 );                      // address data (14 bits)
+            txBuff |= ( G_DESC << 30 );                 // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
 
             // build packet and transmit B data
-            txBuff = colorBuff[ row ][ col ][ 2 ];     // B data (16 bits)
-            txBuff |= ( i << 16 );                  // address data (14 bits)
-            txBuff |= ( B_DESC << 30 );             // LED descriptor (2 bits)
+            txBuff = colorBuff[ row ][ col ][ 2 ];      // B data (16 bits)
+            txBuff |= ( i << 16 );                      // address data (14 bits)
+            txBuff |= ( B_DESC << 30 );                 // LED descriptor (2 bits)
             SpiChnPutC( 1, txBuff );
            
+        }
+
+        if ( gAnim++ > MAX_ANIM ) {
+            gAnim = 1;
         }
     }
 
