@@ -48,7 +48,7 @@ volatile int idxColor = 0;
 volatile int brightVal = 0;
 volatile int gDelay = 0;
 int delayDn = 0;
-int gAnim = 0;
+int gAnim = 1;
 
 const unsigned char ascii[455] = {
 	0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x5f,0x00,0x00,	//  !
@@ -99,66 +99,83 @@ const unsigned char ascii[455] = {
 	0x44,0x64,0x54,0x4c,0x44				// z
 };
 
+// blocking mS delay function
+void D_msDelay ( unsigned int delay ) {
+    OpenTimer1( T1_ON | T1_PS_1_256, 0xFFFF );
+
+    while ( delay-- ) {
+      // t x 1ms loop
+        WriteTimer1( 0 );
+        while ( ReadTimer1() < ( SYS_FREQ / 256 / 1000 ) );
+    }
+
+    CloseTimer1();
+}
+
+// blocking uS delay function
+void D_usDelay ( unsigned int delay ) {
+    OpenTimer1( T1_ON | T1_PS_1_256, 0xFFFF );
+
+    while ( delay-- ) {
+      // t x 1ms loop
+        WriteTimer1( 0 );
+        while ( ReadTimer1() < ( SYS_FREQ / 256 ) );
+    }
+
+    CloseTimer1();
+}
+
+void D_FrameUpdateSlave( int x, int y ) {
+    int i, row, col;
+    uint32_t txBuff;
+    // Send frame update to slave
+     //   for ( i = 0; i <= MAX_LED; i++ ) {
+            // convert to row/col matrix from linear address
+            // col = i % 8;
+             // row = i / 8;
+
+            // addr = y*width + x
+            i = ( y * ( MAX_COL + 1) ) + x;
+
+            // build packet and transmit R data
+            txBuff = colorBuff[ y ][ x ][ 0 ];      // R data (16 bits)
+            txBuff |= ( i << 16 );                      // address data (14 bits)
+            txBuff |= ( R_DESC << 30 );                 // LED descriptor (2 bits)
+            SpiChnPutC( 1, txBuff );
+           //  Nop();
+
+            // build packet and transmit G data
+            txBuff = colorBuff[ y ][ x ][ 1 ];      // G data (16 bits)
+            txBuff |= ( i << 16 );                      // address data (14 bits)
+            txBuff |= ( G_DESC << 30 );                 // LED descriptor (2 bits)
+            SpiChnPutC( 1, txBuff );
+           // Nop();
+
+            // build packet and transmit B data
+            txBuff = colorBuff[ y ][ x ][ 2 ];      // B data (16 bits)
+            txBuff |= ( i << 16 );                      // address data (14 bits)
+            txBuff |= ( B_DESC << 30 );                 // LED descriptor (2 bits)
+            SpiChnPutC( 1, txBuff );
+           // Nop();
+
+      //  }
+}
+
 // Assigns the input RGB color to the specified voxel
 void V_Set( int x, int y, rgb_t color ) {
     colorBuff[ y ][ x ][ 0 ] = color.r;
     colorBuff[ y ][ x ][ 1 ] = color.g;
     colorBuff[ y ][ x ][ 2 ] = color.b;
+    D_FrameUpdateSlave( x, y );
 }
 
 void V_Clear( int x, int y ) {
     colorBuff[ y ][ x ][ 0 ] = 0;
     colorBuff[ y ][ x ][ 1 ] = 0;
     colorBuff[ y ][ x ][ 2 ] = 0;
+    D_FrameUpdateSlave( x, y );
 }
 
-void F_Getchar (char chr, unsigned char *dst) {
-    uint8_t i;
-    // our bitmap font starts at ascii char 32 (decimal, space char). This ensures the input
-    // ascii character is aligned with the start of the bitmap.
-    chr -= 32;
-
-    // loop through each byte of the array and store slice in dst[i] until entire char is built
-    for ( i = 0; i < 5; i++ ) {
-		dst[i] = ascii[ ( chr * 5 ) + i ] ;
-    }
-}
-
-void F_ScrollText(const char *str, rgb_t color) {
-    uint16_t x, y, i;
-    static uint16_t shifts;
-    unsigned char chr[5];   // stores the current character
-
-        // Loop through each character in the string until null byte is hit
-        while ( *str ) {
-            // Get the current character in the pointer and move it into chr array ( 5 bytes )
-
-            /*  !!! adapt code below to displaye one column of text at a time and scroll right !!! */
-            F_Getchar( *str++, chr );
-
-            for (x = 0; x < 5; x++) {
-                for (y = 0; y < 8; y++)	{
-                    if (chr[x] & (0x80 >> y)) {
-                        V_Set(x, 0, color);
-                    }
-                }
-            }
-
-            /*
-            for (i = 0; i < 5; i++) {
-                // block and delay for a moment
-    //            D_Shift('Y', SHIFT_OUT);
-            }
-             */
-        }   // end while
-
-    // make sure last character is shifted out of the cube once
-    // we break out of the while loop
-    for (i = 0; i < 8; i++) {
-      // block and delay for a moment
-      // D_Shift('Y', SHIFT_OUT);
-    }
-}
 
 // takes 8-bit RGB input value and maps to 16-bit value
 uint16_t R_Downsample( uint8_t input ) {
@@ -248,6 +265,70 @@ void D_Fill( rgb_t color ) {
     }
 }
 
+void D_FillRGB( uint16_t r, uint16_t g, uint16_t b ) {
+    rgb_t color = { .r = r, .g = g, .b = b };
+    int i;
+    for ( i = 0; i <= MAX_ROW; i++ ) {
+        V_Set( 0, i, color );
+        V_Set( 1, i, color );
+        V_Set( 2, i, color );
+        V_Set( 3, i, color );
+        V_Set( 4, i, color );
+        V_Set( 5, i, color );
+        V_Set( 6, i, color );
+        V_Set( 7, i, color );
+    }
+}
+
+void F_Getchar ( char chr, unsigned char *dst ) {
+    uint8_t i;
+    // our bitmap font starts at ascii char 32 (decimal, space char). This ensures the input
+    // ascii character is aligned with the start of the bitmap.
+    chr -= 32;
+
+    // loop through each byte of the array and store slice in dst[i] until entire char is built
+    for ( i = 0; i < 5; i++ ) {
+        dst[ i ] = ascii[ ( chr * 5 ) + i ] ;
+    }
+}
+
+void F_ScrollText( const char *str, rgb_t color ) {
+    uint16_t x, y, i;
+    static uint16_t shifts;
+    unsigned char chr[5];   // stores the current character
+
+        // Loop through each character in the string until null byte is hit
+        while ( *str ) {
+            // Get the current character in the pointer and move it into chr array ( 5 bytes )
+            D_FillRGB( 0, 0, 0 );
+            /*  !!! adapt code below to displaye one column of text at a time and scroll right !!! */
+            F_Getchar( *str++, chr );
+
+            for (y = 0; y < 5; y++) {
+                for (x = 0; x < 8; x++)	{
+                    if ( chr[ y ] & ( 0x80 >> x ) ) {
+                        V_Set( x, (4-y), color );
+                    }
+                }
+            }
+
+            /*
+            for (i = 0; i < 5; i++) {
+                // block and delay for a moment
+    //            D_Shift('Y', SHIFT_OUT);
+            }
+             */
+            D_msDelay( 1000 );
+        }   // end while
+
+    // make sure last character is shifted out of the cube once
+    // we break out of the while loop
+    for (i = 0; i < 8; i++) {
+      // block and delay for a moment
+      // D_Shift('Y', SHIFT_OUT);
+    }
+}
+
 void A_Test() {
     rgb_t tmpColor;
     
@@ -280,35 +361,9 @@ void A_Test() {
         colorBuff[ 4 ][ idxColor ][ 0 ] = tmpColor.r;
         colorBuff[ 4 ][ idxColor ][ 1 ] = tmpColor.g;
         colorBuff[ 4 ][ idxColor ][ 2 ] = tmpColor.b;
-
     }
 }
 
-// blocking mS delay function
-void D_msDelay ( unsigned int delay ) {
-    OpenTimer1( T1_ON | T1_PS_1_256, 0xFFFF );
-    
-    while ( delay-- ) {
-      // t x 1ms loop
-        WriteTimer1( 0 );
-        while ( ReadTimer1() < ( SYS_FREQ / 256 / 1000 ) );
-    }
-
-    CloseTimer1();
-}
-
-// blocking uS delay function
-void D_usDelay ( unsigned int delay ) {
-    OpenTimer1( T1_ON | T1_PS_1_256, 0xFFFF );
-
-    while ( delay-- ) {
-      // t x 1ms loop
-        WriteTimer1( 0 );
-        while ( ReadTimer1() < ( SYS_FREQ / 256 ) );
-    }
-
-    CloseTimer1();
-}
 
 void A_Animate( ) {
     rgb_t tmpColor;
@@ -329,7 +384,7 @@ void A_Animate( ) {
             break;
         case 3:
             tmpColor.r = 0x0;
-            tmpColor.g = 0x0;
+            tmpColor.g = 0;
             tmpColor.b = 0xFFFF;
             D_Fill( tmpColor );
             D_msDelay ( 1000 );
@@ -403,36 +458,15 @@ int main() {
     // addr is the current linear address in the cube space. 14 bits = 16384 total unique addresses
     // LED value is the PWM brightnes value (0-65535) of the current LED   
 
-
     while ( 1 ) {
-        A_Animate( gAnim );
-        // Send frame update to slave
-        for ( i = 0; i < MAX_LED; i++ ) {
-            // convert to row/col matrix from linear address
-            col = i % 8;
-            row = i / 8;
+        // A_Animate( gAnim );
 
-            // build packet and transmit R data
-            txBuff = colorBuff[ row ][ col ][ 0 ];      // R data (16 bits)
-            txBuff |= ( i << 16 );                      // address data (14 bits)
-            txBuff |= ( R_DESC << 30 );                 // LED descriptor (2 bits)
-            SpiChnPutC( 1, txBuff );
+        rgb_t tmp = {0, 0, 0xFFFF};
+        F_ScrollText( "A" , tmp );
+    
+        
 
-            // build packet and transmit G data
-            txBuff = colorBuff[ row ][ col ][ 1 ];      // G data (16 bits)
-            txBuff |= ( i << 16 );                      // address data (14 bits)
-            txBuff |= ( G_DESC << 30 );                 // LED descriptor (2 bits)
-            SpiChnPutC( 1, txBuff );
-
-            // build packet and transmit B data
-            txBuff = colorBuff[ row ][ col ][ 2 ];      // B data (16 bits)
-            txBuff |= ( i << 16 );                      // address data (14 bits)
-            txBuff |= ( B_DESC << 30 );                 // LED descriptor (2 bits)
-            SpiChnPutC( 1, txBuff );
-           
-        }
-
-        if ( gAnim++ > MAX_ANIM ) {
+        if ( ++gAnim > MAX_ANIM ) {
             gAnim = 1;
         }
     }
